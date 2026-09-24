@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Osc Mini App</title>
+  <!-- 引入 LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #f7f9fa;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #333333;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #e0e0e0;
+      border-top: 4px solid #00c300; /* LINE 綠色 */
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    h2 { font-size: 18px; margin-bottom: 8px; color: #111; }
+    p { font-size: 14px; color: #666; text-align: center; padding: 0 20px; }
+  </style>
+</head>
+<body>
+
+  <div class="spinner"></div>
+  <h2 id="loading-title">正在驗證身分</h2>
+  <p id="loading-desc">正在透過 LINE Mini App 為您自動註冊與登入，請稍候...</p>
+
+  <script>
+    // 填入你在 LINE Developers 後台取得的 LIFF ID
+    const LIFF_ID = "2011681231-z9W0peLU"; 
+
+    async function initMiniApp() {
+      try {
+        // 1. 初始化 LIFF SDK
+        await liff.init({ liffId: LIFF_ID });
+
+        // 2. 檢查是否已登入 LINE
+        if (!liff.isLoggedIn()) {
+          // 若未登入，直接觸發 LINE 登入授權頁面
+          liff.login({ redirectUri: window.location.href });
+          return;
+        }
+
+        // 3. 成功取得 LINE 使用者授權個資
+        const profile = await liff.getProfile();
+        const lineUserId = profile.userId;
+        const displayName = profile.displayName;
+        const pictureUrl = profile.pictureUrl;
+        
+        // 嘗試取得 Email（需 LIFF 權限，若無則為空）
+        let email = "";
+        try {
+          const decodedIDToken = liff.getDecodedIDToken();
+          email = decodedIDToken ? decodedIDToken.email : "";
+        } catch (e) {
+          console.log("未取得 Email 權限");
+        }
+
+        document.getElementById("loading-title").innerText = `歡迎回來，${displayName}！`;
+        document.getElementById("loading-desc").innerText = "正在連線至系統後端...";
+
+        // 4. 將個資透過 API 傳送到你的伺服器（https://osc188.com）進行自動註冊或登入
+        const response = await fetch('https://osc188.com/api/auth/line-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            lineUserId: lineUserId,
+            name: displayName,
+            avatar: pictureUrl,
+            email: email
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          // 註冊/登入成功，儲存 Token
+          localStorage.setItem('auth_token', result.token);
+
+          // 5. 成功後無縫跳轉到你的主功能頁面
+          window.location.replace("https://osc188.com/dashboard.html"); 
+        } else {
+          alert("登入同步伺服器失敗，請重新整理試試。");
+        }
+
+      } catch (error) {
+        console.error("LINE Mini App 初始化或登入發生錯誤：", error);
+        document.getElementById("loading-title").innerText = "發生錯誤";
+        document.getElementById("loading-desc").innerText = "無法取得 LINE 授權，請確認網路或重新開啟。";
+      }
+    }
+
+    // 網頁載入完成後執行
+    window.onload = function() {
+      initMiniApp();
+    };
+  </script>
+</body>
+</html>
